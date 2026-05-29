@@ -1,0 +1,16 @@
+# Fast profile - optimized for speed with quality guardrails
+# Usage: paperbanana generate --config configs/fast.yaml ...
+
+vlm:
+  provider: gemini
+  model: gemini-3.1-flash-lite-preview
+
+pipeline:
+  refinement_iterations: 2
+  num_retrieval_examples: 10
+  optimize_inputs: true
+  skip_stylist: true
+  critic_score_threshold: 8.0
+
+output:
+  save_iterations: false

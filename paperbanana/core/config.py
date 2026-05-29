@@ -1,0 +1,244 @@
+"""Configuration management for PaperBanana."""
+
+from __future__ import annotations
+
+from pathlib import Path
+from typing import Any, Literal, Optional
+
+import yaml
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings
+
+OutputFormat = Literal["png", "jpeg", "webp"]
+ExemplarRetrievalMode = Literal["external_only", "external_then_rerank"]
+
+
+class VLMConfig(BaseSettings):
+    """VLM provider configuration."""
+
+    provider: str = "gemini"
+    model: str = "gemini-2.0-flash"
+
+
+class ImageConfig(BaseSettings):
+    """Image generation provider configuration."""
+
+    provider: str = "google_imagen"
+    model: str = "gemini-3-pro-image-preview"
+
+
+class PipelineConfig(BaseSettings):
+    """Pipeline execution configuration."""
+
+    num_retrieval_examples: int = 10
+    refinement_iterations: int = 3
+    output_resolution: str = "2k"
+    diagram_type: str = "methodology"
+
+
+class ReferenceConfig(BaseSettings):
+    """Reference set configuration."""
+
+    path: str = "data/reference_sets"
+    guidelines_path: str = "data/guidelines"
+
+
+class OutputConfig(BaseSettings):
+    """Output configuration."""
+
+    dir: str = "outputs"
+    format: str = "png"
+    save_iterations: bool = True
+    save_prompts: bool = True
+    save_metadata: bool = True
+
+
+RESOLUTION_MAP: dict[str, tuple[int, int]] = {
+    "1k": (1792, 1024),
+    "2k": (2560, 1440),
+    "4k": (3840, 2160),
+}
+
+
+class Settings(BaseSettings):
+    """Main PaperBanana settings, loaded from env vars and config files."""
+
+    # Provider settings
+    vlm_provider: str = Field(default="gemini", alias="VLM_PROVIDER")
+    vlm_model: str = Field(default="gemini-3.1-flash-lite-preview", alias="VLM_MODEL")
+    image_provider: str = Field(default="google_imagen", alias="IMAGE_PROVIDER")
+    image_model: str = Field(default="gemini-3-pro-image-preview", alias="IMAGE_MODEL")
+
+    # Pipeline settings
+    num_retrieval_examples: int = 10
+    refinement_iterations: int = 3
+    auto_refine: bool = False
+    max_iterations: int = 30
+    optimize_inputs: bool = False
+    output_resolution: str = "2k"
+    seed: Optional[int] = None
+    exp_mode: str = "full"
+    skip_stylist: bool = False
+    critic_score_threshold: float = 0.0
+    max_critic_rounds: int = 5
+    batch_concurrent: int = 2
+    exemplar_retrieval_enabled: bool = False
+    exemplar_retrieval_endpoint: Optional[str] = None
+    exemplar_retrieval_mode: ExemplarRetrievalMode = "external_then_rerank"
+    exemplar_retrieval_top_k: int = 10
+    exemplar_retrieval_timeout_seconds: float = 20.0
+    exemplar_retrieval_max_retries: int = 2
+
+    # Reference settings
+    reference_set_path: str = "data/reference_sets"
+    guidelines_path: str = "data/guidelines"
+
+    # Cache settings
+    cache_dir: Optional[str] = Field(default=None, alias="PAPERBANANA_CACHE_DIR")
+
+    # Output settings
+    output_dir: str = "outputs"
+    output_format: OutputFormat = "png"
+    save_iterations: bool = True
+    save_prompts: bool = True
+
+    # API Keys (loaded from environment)
+    google_api_key: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
+    openrouter_api_key: Optional[str] = Field(default=None, alias="OPENROUTER_API_KEY")
+    openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
+    anthropic_api_key: Optional[str] = Field(default=None, alias="ANTHROPIC_API_KEY")
+    openai_base_url: str = Field(default="https://api.openai.com/v1", alias="OPENAI_BASE_URL")
+    openai_vlm_model: Optional[str] = Field(default=None, alias="OPENAI_VLM_MODEL")
+    openai_image_model: Optional[str] = Field(default=None, alias="OPENAI_IMAGE_MODEL")
+
+    # AWS Bedrock settings
+    aws_region: str = Field(default="us-east-1", alias="AWS_REGION")
+    aws_profile: Optional[str] = Field(default=None, alias="AWS_PROFILE")
+    bedrock_vlm_model: Optional[str] = Field(default=None, alias="BEDROCK_VLM_MODEL")
+    bedrock_image_model: Optional[str] = Field(default=None, alias="BEDROCK_IMAGE_MODEL")
+
+    @property
+    def effective_vlm_model(self) -> str:
+        """Return the VLM model for the active provider."""
+        if self.vlm_provider == "openai" and self.openai_vlm_model:
+            return self.openai_vlm_model
+        if self.vlm_provider == "bedrock" and self.bedrock_vlm_model:
+            return self.bedrock_vlm_model
+        return self.vlm_model
+
+    @property
+    def effective_image_model(self) -> str:
+        """Return the image model for the active provider."""
+        if self.image_provider == "openai_imagen" and self.openai_image_model:
+            return self.openai_image_model
+        if self.image_provider == "bedrock_imagen" and self.bedrock_image_model:
+            return self.bedrock_image_model
+        return self.image_model
+
+    # SSL
+    skip_ssl_verification: bool = Field(default=False, alias="SKIP_SSL_VERIFICATION")
+
+    @property
+    def output_width_height(self) -> tuple[int, int]:
+        """Convert output_resolution string to (width, height) pixel dimensions."""
+        return RESOLUTION_MAP.get(self.output_resolution.lower(), (1792, 1024))
+
+    model_config = {
+        "env_file": ".env",
+        "env_file_encoding": "utf-8",
+        "extra": "ignore",
+        "populate_by_name": True,
+    }
+
+    @field_validator("output_format", mode="before")
+    @classmethod
+    def validate_output_format(cls, v: Any) -> str:
+        """Validate output_format is png, jpeg, or webp (case-insensitive)."""
+        if v is None:
+            return "png"
+        v = str(v).lower()
+        if v not in ("png", "jpeg", "webp"):
+            raise ValueError(f"output_format must be png, jpeg, or webp. Got: {v}")
+        return v
+
+    @field_validator("exemplar_retrieval_top_k")
+    @classmethod
+    def validate_exemplar_retrieval_top_k(cls, v: int) -> int:
+        """Validate exemplar_retrieval_top_k is positive."""
+        if v < 1:
+            raise ValueError("exemplar_retrieval_top_k must be >= 1")
+        return v
+
+    @field_validator("exemplar_retrieval_timeout_seconds")
+    @classmethod
+    def validate_exemplar_retrieval_timeout(cls, v: float) -> float:
+        """Validate exemplar_retrieval_timeout_seconds is positive."""
+        if v <= 0:
+            raise ValueError("exemplar_retrieval_timeout_seconds must be > 0")
+        return v
+
+    @field_validator("exemplar_retrieval_max_retries")
+    @classmethod
+    def validate_exemplar_retrieval_max_retries(cls, v: int) -> int:
+        """Validate exemplar_retrieval_max_retries is non-negative."""
+        if v < 0:
+            raise ValueError("exemplar_retrieval_max_retries must be >= 0")
+        return v
+
+    @classmethod
+    def from_yaml(cls, config_path: str | Path, **overrides: Any) -> Settings:
+        """Load settings from a YAML config file with optional overrides."""
+        config_path = Path(config_path)
+        if config_path.exists():
+            with open(config_path) as f:
+                yaml_config = yaml.safe_load(f) or {}
+        else:
+            yaml_config = {}
+
+        flat = _flatten_yaml(yaml_config)
+        flat.update(overrides)
+        return cls(**flat)
+
+
+def _flatten_yaml(config: dict, prefix: str = "") -> dict:
+    """Flatten nested YAML config into flat settings keys."""
+    flat = {}
+    key_map = {
+        "vlm.provider": "vlm_provider",
+        "vlm.model": "vlm_model",
+        "image.provider": "image_provider",
+        "image.model": "image_model",
+        "pipeline.num_retrieval_examples": "num_retrieval_examples",
+        "pipeline.refinement_iterations": "refinement_iterations",
+        "pipeline.auto_refine": "auto_refine",
+        "pipeline.max_iterations": "max_iterations",
+        "pipeline.optimize_inputs": "optimize_inputs",
+        "pipeline.output_resolution": "output_resolution",
+        "pipeline.seed": "seed",
+        "pipeline.exemplar_retrieval_enabled": "exemplar_retrieval_enabled",
+        "pipeline.exemplar_retrieval_endpoint": "exemplar_retrieval_endpoint",
+        "pipeline.exemplar_retrieval_mode": "exemplar_retrieval_mode",
+        "pipeline.exemplar_retrieval_top_k": "exemplar_retrieval_top_k",
+        "pipeline.exemplar_retrieval_timeout_seconds": "exemplar_retrieval_timeout_seconds",
+        "pipeline.exemplar_retrieval_max_retries": "exemplar_retrieval_max_retries",
+        "pipeline.skip_stylist": "skip_stylist",
+        "pipeline.critic_score_threshold": "critic_score_threshold",
+        "reference.path": "reference_set_path",
+        "reference.guidelines_path": "guidelines_path",
+        "output.dir": "output_dir",
+        "output.format": "output_format",
+        "output.save_iterations": "save_iterations",
+        "output.save_prompts": "save_prompts",
+    }
+
+    def _recurse(d: dict, prefix: str = "") -> None:
+        for k, v in d.items():
+            full_key = f"{prefix}.{k}" if prefix else k
+            if isinstance(v, dict):
+                _recurse(v, full_key)
+            else:
+                if full_key in key_map:
+                    flat[key_map[full_key]] = v
+
+    _recurse(config)
+    return flat
