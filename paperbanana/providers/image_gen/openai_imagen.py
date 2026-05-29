@@ -15,6 +15,10 @@ from paperbanana.providers.base import ImageGenProvider
 logger = structlog.get_logger()
 
 
+def _is_gpt_image_2(model: str) -> bool:
+    return model.lower() == "gpt-image-2"
+
+
 class OpenAIImageGen(ImageGenProvider):
     """Image generation using the OpenAI Python SDK (async).
 
@@ -62,11 +66,15 @@ class OpenAIImageGen(ImageGenProvider):
 
     @property
     def supported_ratios(self) -> list[str]:
-        # OpenAI only has 3 native sizes: 1024x1024, 1536x1024, 1024x1536
+        if _is_gpt_image_2(self._model):
+            return ["1:1", "2:3", "3:2", "3:4", "4:3", "9:16", "16:9", "21:9"]
+        # Earlier GPT Image models only have 3 native sizes.
         return ["1:1", "3:2", "2:3"]
 
     def _size_string(self, width: int, height: int) -> str:
         """Map pixel dimensions to an OpenAI-supported size string."""
+        if _is_gpt_image_2(self._model):
+            return f"{width}x{height}"
         ratio = width / height
         if ratio > 1.2:
             return "1536x1024"
@@ -74,16 +82,14 @@ class OpenAIImageGen(ImageGenProvider):
             return "1024x1536"
         return "1024x1024"
 
-    # gpt-image-2 native max: 2048x1152 (16:9), 1536x1536 (1:1), 1024x1536 (3:4).
-    # DALL-E 3 fallback: 1024x1024 / 1536x1024 / 1024x1536. Sizes below honor whichever
-    # model the request lands on (gpt-image-2 accepts these wider sizes; older models
-    # auto-snap down).
+    # OpenAI only supports 1024x1024, 1536x1024, 1024x1536.
+    # Map all aspect ratios to the closest supported size.
     _RATIO_TO_SIZE = {
-        "21:9": "2048x1152",
-        "16:9": "2048x1152",
+        "21:9": "1536x1024",
+        "16:9": "1536x1024",
         "4:3": "1536x1024",
         "3:2": "1536x1024",
-        "1:1": "1536x1536",
+        "1:1": "1024x1024",
         "2:3": "1024x1536",
         "3:4": "1024x1536",
         "9:16": "1024x1536",
@@ -98,6 +104,7 @@ class OpenAIImageGen(ImageGenProvider):
         height: int = 1024,
         seed: Optional[int] = None,
         aspect_ratio: Optional[str] = None,
+        quality: Optional[str] = None,
     ) -> Image.Image:
         client = self._get_client()
 
@@ -105,13 +112,23 @@ class OpenAIImageGen(ImageGenProvider):
         if negative_prompt:
             full_prompt += f"\n\nAvoid: {negative_prompt}"
 
-        result = await client.images.generate(
-            model=self._model,
-            prompt=full_prompt,
-            n=1,
-            size=self._RATIO_TO_SIZE.get(aspect_ratio, self._size_string(width, height)),
-        )
+        if _is_gpt_image_2(self._model):
+            size = self._size_string(width, height)
+        else:
+            size = self._RATIO_TO_SIZE.get(aspect_ratio, self._size_string(width, height))
+
+        kwargs = {
+            "model": self._model,
+            "prompt": full_prompt,
+            "n": 1,
+            "size": size,
+        }
+        if quality:
+            kwargs["quality"] = quality
+
+        result = await client.images.generate(**kwargs)
 
         b64_data = result.data[0].b64_json
         image_bytes = base64.b64decode(b64_data)
+
         return Image.open(BytesIO(image_bytes))
