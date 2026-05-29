@@ -10,7 +10,10 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 OutputFormat = Literal["png", "jpeg", "webp"]
+ImageQuality = Literal["low", "medium", "high", "auto"]
 ExemplarRetrievalMode = Literal["external_only", "external_then_rerank"]
+Venue = Literal["neurips", "icml", "acl", "ieee", "custom"]
+VectorExportMode = Literal["none", "svg", "pdf", "both"]
 
 
 class VLMConfig(BaseSettings):
@@ -75,26 +78,36 @@ class Settings(BaseSettings):
     auto_refine: bool = False
     max_iterations: int = 30
     optimize_inputs: bool = False
-    output_resolution: str = "2k"
-    seed: Optional[int] = None
+    skip_stylist: bool = Field(default=False, alias="SKIP_STYLIST")
+    # Local fork additions: exp_mode pipeline + perf knobs
     exp_mode: str = "full"
-    skip_stylist: bool = False
     critic_score_threshold: float = 0.0
     max_critic_rounds: int = 5
     batch_concurrent: int = 2
+    output_resolution: str = Field(default="2k", alias="OUTPUT_RESOLUTION")
+    image_quality: ImageQuality = Field(default="auto", alias="IMAGE_QUALITY")
+    seed: Optional[int] = None
     exemplar_retrieval_enabled: bool = False
     exemplar_retrieval_endpoint: Optional[str] = None
     exemplar_retrieval_mode: ExemplarRetrievalMode = "external_then_rerank"
     exemplar_retrieval_top_k: int = 10
     exemplar_retrieval_timeout_seconds: float = 20.0
     exemplar_retrieval_max_retries: int = 2
+    venue: Venue = "neurips"
+    vector_export: VectorExportMode = "none"
 
     # Reference settings
     reference_set_path: str = "data/reference_sets"
+    reference_category: Optional[list[str]] = None
     guidelines_path: str = "data/guidelines"
 
     # Cache settings
     cache_dir: Optional[str] = Field(default=None, alias="PAPERBANANA_CACHE_DIR")
+
+    # Cost tracking
+    budget_usd: Optional[float] = Field(
+        default=None, gt=0, description="Budget cap in USD; pipeline aborts if exceeded"
+    )
 
     # Output settings
     output_dir: str = "outputs"
@@ -102,14 +115,40 @@ class Settings(BaseSettings):
     save_iterations: bool = True
     save_prompts: bool = True
 
+    # Prompt settings
+    prompt_dir: Optional[str] = None
+
+    # Caption generation
+    generate_caption: bool = False
+
+    # Benchmark settings
+    benchmark_concurrency: int = 1
+
     # API Keys (loaded from environment)
     google_api_key: Optional[str] = Field(default=None, alias="GOOGLE_API_KEY")
     openrouter_api_key: Optional[str] = Field(default=None, alias="OPENROUTER_API_KEY")
     openai_api_key: Optional[str] = Field(default=None, alias="OPENAI_API_KEY")
     anthropic_api_key: Optional[str] = Field(default=None, alias="ANTHROPIC_API_KEY")
+    google_base_url: Optional[str] = Field(default=None, alias="GOOGLE_BASE_URL")
+    google_vlm_model: Optional[str] = Field(default=None, alias="GOOGLE_VLM_MODEL")
+    google_image_model: Optional[str] = Field(default=None, alias="GOOGLE_IMAGE_MODEL")
     openai_base_url: str = Field(default="https://api.openai.com/v1", alias="OPENAI_BASE_URL")
     openai_vlm_model: Optional[str] = Field(default=None, alias="OPENAI_VLM_MODEL")
     openai_image_model: Optional[str] = Field(default=None, alias="OPENAI_IMAGE_MODEL")
+
+    ollama_base_url: str = Field(default="http://localhost:11434/v1", alias="OLLAMA_BASE_URL")
+    ollama_model: Optional[str] = Field(default=None, alias="OLLAMA_MODEL")
+    ollama_json_mode: bool = Field(default=False, alias="OLLAMA_JSON_MODE")
+    openai_local_base_url: str = Field(
+        default="http://localhost:8000/v1",
+        alias="OPENAI_LOCAL_BASE_URL",
+    )
+    openai_local_json_mode: bool = Field(default=False, alias="OPENAI_LOCAL_JSON_MODE")
+
+    # LiteLLM settings
+    litellm_model: Optional[str] = Field(default=None, alias="LITELLM_MODEL")
+    litellm_api_key: Optional[str] = Field(default=None, alias="LITELLM_API_KEY")
+    litellm_api_base: Optional[str] = Field(default=None, alias="LITELLM_API_BASE")
 
     # AWS Bedrock settings
     aws_region: str = Field(default="us-east-1", alias="AWS_REGION")
@@ -120,6 +159,8 @@ class Settings(BaseSettings):
     @property
     def effective_vlm_model(self) -> str:
         """Return the VLM model for the active provider."""
+        if self.vlm_provider == "gemini" and self.google_vlm_model:
+            return self.google_vlm_model
         if self.vlm_provider == "openai" and self.openai_vlm_model:
             return self.openai_vlm_model
         if self.vlm_provider == "bedrock" and self.bedrock_vlm_model:
@@ -129,19 +170,21 @@ class Settings(BaseSettings):
     @property
     def effective_image_model(self) -> str:
         """Return the image model for the active provider."""
+        if self.image_provider == "google_imagen" and self.google_image_model:
+            return self.google_image_model
         if self.image_provider == "openai_imagen" and self.openai_image_model:
             return self.openai_image_model
         if self.image_provider == "bedrock_imagen" and self.bedrock_image_model:
             return self.bedrock_image_model
         return self.image_model
 
-    # SSL
-    skip_ssl_verification: bool = Field(default=False, alias="SKIP_SSL_VERIFICATION")
-
     @property
     def output_width_height(self) -> tuple[int, int]:
         """Convert output_resolution string to (width, height) pixel dimensions."""
         return RESOLUTION_MAP.get(self.output_resolution.lower(), (1792, 1024))
+
+    # SSL
+    skip_ssl_verification: bool = Field(default=False, alias="SKIP_SSL_VERIFICATION")
 
     model_config = {
         "env_file": ".env",
@@ -159,6 +202,28 @@ class Settings(BaseSettings):
         v = str(v).lower()
         if v not in ("png", "jpeg", "webp"):
             raise ValueError(f"output_format must be png, jpeg, or webp. Got: {v}")
+        return v
+
+    @field_validator("output_resolution", mode="before")
+    @classmethod
+    def validate_output_resolution(cls, v: Any) -> str:
+        """Validate output_resolution is 1k, 2k, or 4k."""
+        if v is None:
+            return "2k"
+        v = str(v).lower()
+        if v not in ("1k", "2k", "4k"):
+            raise ValueError(f"output_resolution must be 1k, 2k, or 4k. Got: {v}")
+        return v
+
+    @field_validator("image_quality", mode="before")
+    @classmethod
+    def validate_image_quality(cls, v: Any) -> str:
+        """Validate image_quality is low, medium, high, or auto."""
+        if v is None:
+            return "auto"
+        v = str(v).lower()
+        if v not in ("low", "medium", "high", "auto"):
+            raise ValueError(f"image_quality must be low, medium, high, or auto. Got: {v}")
         return v
 
     @field_validator("exemplar_retrieval_top_k")
@@ -185,6 +250,35 @@ class Settings(BaseSettings):
             raise ValueError("exemplar_retrieval_max_retries must be >= 0")
         return v
 
+    @field_validator("vector_export", mode="before")
+    @classmethod
+    def validate_vector_export(cls, v: Any) -> str:
+        """Validate vector_export mode."""
+        if v is None:
+            return "none"
+        if isinstance(v, bool):
+            return "both" if v else "none"
+        v_str = str(v).strip().lower()
+        # Backward compatibility for legacy bool-like inputs from env/YAML/CLI tests.
+        if v_str in ("true", "1", "yes", "on"):
+            return "both"
+        if v_str in ("false", "0", "no", "off"):
+            return "none"
+        if v_str not in ("none", "svg", "pdf", "both"):
+            raise ValueError(f"vector_export must be none, svg, pdf, or both. Got: {v_str}")
+        return v_str
+
+    @field_validator("venue", mode="before")
+    @classmethod
+    def validate_venue(cls, v: Any) -> str:
+        """Validate venue is a supported venue name (case-insensitive)."""
+        if v is None:
+            return "neurips"
+        v = str(v).lower()
+        if v not in ("neurips", "icml", "acl", "ieee", "custom"):
+            raise ValueError(f"venue must be neurips, icml, acl, ieee, or custom. Got: {v}")
+        return v
+
     @classmethod
     def from_yaml(cls, config_path: str | Path, **overrides: Any) -> Settings:
         """Load settings from a YAML config file with optional overrides."""
@@ -208,11 +302,17 @@ def _flatten_yaml(config: dict, prefix: str = "") -> dict:
         "vlm.model": "vlm_model",
         "image.provider": "image_provider",
         "image.model": "image_model",
+        "image.quality": "image_quality",
         "pipeline.num_retrieval_examples": "num_retrieval_examples",
         "pipeline.refinement_iterations": "refinement_iterations",
         "pipeline.auto_refine": "auto_refine",
         "pipeline.max_iterations": "max_iterations",
         "pipeline.optimize_inputs": "optimize_inputs",
+        "pipeline.skip_stylist": "skip_stylist",
+        "pipeline.critic_score_threshold": "critic_score_threshold",
+        "pipeline.exp_mode": "exp_mode",
+        "pipeline.max_critic_rounds": "max_critic_rounds",
+        "pipeline.batch_concurrent": "batch_concurrent",
         "pipeline.output_resolution": "output_resolution",
         "pipeline.seed": "seed",
         "pipeline.exemplar_retrieval_enabled": "exemplar_retrieval_enabled",
@@ -221,14 +321,19 @@ def _flatten_yaml(config: dict, prefix: str = "") -> dict:
         "pipeline.exemplar_retrieval_top_k": "exemplar_retrieval_top_k",
         "pipeline.exemplar_retrieval_timeout_seconds": "exemplar_retrieval_timeout_seconds",
         "pipeline.exemplar_retrieval_max_retries": "exemplar_retrieval_max_retries",
-        "pipeline.skip_stylist": "skip_stylist",
-        "pipeline.critic_score_threshold": "critic_score_threshold",
         "reference.path": "reference_set_path",
+        "reference.category": "reference_category",
         "reference.guidelines_path": "guidelines_path",
+        "pipeline.venue": "venue",
+        "pipeline.vector_export": "vector_export",
         "output.dir": "output_dir",
         "output.format": "output_format",
+        "output.vector_export": "vector_export",
         "output.save_iterations": "save_iterations",
         "output.save_prompts": "save_prompts",
+        "cost.budget": "budget_usd",
+        "pipeline.prompt_dir": "prompt_dir",
+        "pipeline.generate_caption": "generate_caption",
     }
 
     def _recurse(d: dict, prefix: str = "") -> None:

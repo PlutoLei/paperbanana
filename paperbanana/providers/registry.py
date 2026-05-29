@@ -135,10 +135,53 @@ class ProviderRegistry:
                 api_key=settings.anthropic_api_key,
                 model=settings.vlm_model,
             )
+        elif provider == "ollama":
+            from paperbanana.providers.vlm.ollama import OllamaVLM
+
+            return OllamaVLM(
+                model=settings.ollama_model or settings.vlm_model,
+                base_url=settings.ollama_base_url,
+                json_mode=settings.ollama_json_mode,
+            )
+        elif provider == "openai_local":
+            # Downgraded to local OpenAIVLM signature (no json_mode/provider_name kwargs)
+            from paperbanana.providers.vlm.openai import OpenAIVLM
+
+            return OpenAIVLM(
+                api_key=settings.openai_api_key or "not-needed",
+                model=settings.openai_vlm_model or settings.vlm_model,
+                base_url=settings.openai_local_base_url,
+            )
+        elif provider == "claude_code":
+            from paperbanana.providers.vlm.claude_code import ClaudeCodeVLM
+
+            vlm = ClaudeCodeVLM(model=settings.vlm_model)
+            if not vlm.is_available():
+                raise ValueError(
+                    "claude CLI not found in PATH.\n\n"
+                    "Install Claude Code and sign in, then"
+                    " ensure `claude` is available on PATH."
+                )
+            return vlm
+        elif provider == "litellm":
+            from paperbanana.providers.vlm.litellm import LiteLLMVLM
+
+            vlm = LiteLLMVLM(
+                model=settings.litellm_model or settings.vlm_model,
+                api_key=settings.litellm_api_key,
+                api_base=settings.litellm_api_base,
+            )
+            if not vlm.is_available():
+                raise ImportError(
+                    "litellm is required for the LiteLLM provider. "
+                    "Install with: pip install 'paperbanana[litellm]'"
+                )
+            return vlm
         else:
             raise ValueError(
                 "Unknown VLM provider: "
-                f"{provider}. Available: gemini, openrouter, openai, bedrock, anthropic"
+                f"{provider}. Available: gemini, openrouter, openai, openai_local, "
+                f"bedrock, anthropic, ollama, claude_code, litellm"
             )
 
     @staticmethod
