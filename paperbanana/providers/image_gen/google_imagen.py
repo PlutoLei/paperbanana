@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
+import asyncio
 import base64
 from io import BytesIO
 from typing import Optional
 
 import structlog
 from PIL import Image
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential_jitter
 
 from paperbanana.providers.base import ImageGenProvider
 
@@ -95,7 +96,7 @@ class GoogleImagenGen(ImageGenProvider):
             return "2K"
         return "4K"
 
-    @retry(stop=stop_after_attempt(3), wait=wait_exponential(min=1, max=10))
+    @retry(stop=stop_after_attempt(3), wait=wait_exponential_jitter(initial=2, max=60), reraise=True)
     async def generate(
         self,
         prompt: str,
@@ -132,7 +133,9 @@ class GoogleImagenGen(ImageGenProvider):
 
         logger.info("Calling Imagen API", model=self._model)
 
-        response = self._client.models.generate_images(
+        # Sync SDK call moved off the event loop so concurrent pipelines overlap
+        response = await asyncio.to_thread(
+            self._client.models.generate_images,
             model=self._model,
             prompt=prompt,
             config=config,
@@ -178,7 +181,9 @@ class GoogleImagenGen(ImageGenProvider):
 
         logger.info("Calling Gemini image API", model=self._model)
 
-        response = self._client.models.generate_content(
+        # Sync SDK call moved off the event loop so concurrent pipelines overlap
+        response = await asyncio.to_thread(
+            self._client.models.generate_content,
             model=self._model,
             contents=prompt,
             config=config,

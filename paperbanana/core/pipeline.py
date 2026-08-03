@@ -94,6 +94,24 @@ def _apply_ssl_skip():
         pass
 
 
+def _select_final_iteration(iterations):
+    """Pick the iteration to deliver: highest critic score, ties -> latest.
+
+    Critic scores oscillate across rounds (a later round can regress below an
+    earlier peak), so delivering the last iteration can ship a worse image than
+    one already generated. Falls back to the last iteration when no critique
+    carries a numeric score.
+    """
+    best = None
+    for it in iterations:
+        score = it.critique.score if it.critique else None
+        if score is None:
+            continue
+        if best is None or score >= best[0]:
+            best = (score, it)
+    return best[1] if best else iterations[-1]
+
+
 class PaperBananaPipeline:
     """Main orchestration pipeline for academic illustration generation.
 
@@ -333,7 +351,17 @@ class PaperBananaPipeline:
         inputs: list[GenerationInput],
         max_concurrent: Optional[int] = None,
     ):
-        """Process multiple inputs with concurrency control.
+        """UNSAFE — do not use for concurrent batches; kept only for reference.
+
+        Known defects (verified 2026-08-03): (1) the save/restore of
+        self.run_id races across concurrent tasks, cross-wiring run
+        directories; (2) VisualizerAgent freezes output_dir at pipeline
+        construction, so concurrent items overwrite each other's
+        slide_iter_N.png and the critic can score the wrong image —
+        silently; (3) a single failed item propagates out of as_completed
+        and abandons the rest of the batch. Concurrency belongs at the
+        caller: one fresh PaperBananaPipeline instance per item (see the
+        slide-batch CLI command).
 
         Args:
             inputs: List of generation inputs.
@@ -717,7 +745,7 @@ class PaperBananaPipeline:
                 break
 
         # Final output
-        final_image = iterations[-1].image_path
+        final_image = _select_final_iteration(iterations).image_path
         output_format = getattr(self.settings, "output_format", "png").lower()
         ext = "jpg" if output_format == "jpeg" else output_format
         final_output_path = str(self._run_dir / f"final_output.{ext}")
@@ -971,7 +999,7 @@ class PaperBananaPipeline:
                 break
 
         # Final output
-        final_image = iterations[-1].image_path
+        final_image = _select_final_iteration(iterations).image_path
         output_format = getattr(self.settings, "output_format", "png").lower()
         ext = "jpg" if output_format == "jpeg" else output_format
         final_output_path = str(self._run_dir / f"final_output.{ext}")
@@ -1189,7 +1217,7 @@ class PaperBananaPipeline:
                 break
 
         # Final output
-        final_image = iterations[-1].image_path
+        final_image = _select_final_iteration(iterations).image_path
         output_format = getattr(self.settings, "output_format", "png").lower()
         ext = "jpg" if output_format == "jpeg" else output_format
         final_output_path = str(run_dir / f"final_output.{ext}")

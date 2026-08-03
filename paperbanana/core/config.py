@@ -81,7 +81,9 @@ class Settings(BaseSettings):
     skip_stylist: bool = Field(default=False, alias="SKIP_STYLIST")
     # Local fork additions: exp_mode pipeline + perf knobs
     exp_mode: str = "full"
-    critic_score_threshold: float = 0.0
+    # 9.0 calibrated on 69 historical runs (2026-08-03): zero false-early-stops,
+    # ~25% wasted rounds saved. 8.5 would disable refinement (critic's modal score).
+    critic_score_threshold: float = 9.0
     max_critic_rounds: int = 5
     batch_concurrent: int = 2
     output_resolution: str = Field(default="2k", alias="OUTPUT_RESOLUTION")

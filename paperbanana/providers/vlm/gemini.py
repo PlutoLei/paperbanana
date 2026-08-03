@@ -2,12 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import re
 from typing import Optional
 
 import structlog
 from PIL import Image
-from tenacity import retry, stop_after_attempt, wait_exponential
+from tenacity import retry, stop_after_attempt, wait_exponential_jitter
 
 from paperbanana.core.utils import image_to_base64
 from paperbanana.providers.base import VLMProvider
@@ -58,7 +59,7 @@ class GeminiVLM(VLMProvider):
     def is_available(self) -> bool:
         return self._api_key is not None
 
-    @retry(stop=stop_after_attempt(8), wait=wait_exponential(min=2, max=120))
+    @retry(stop=stop_after_attempt(8), wait=wait_exponential_jitter(initial=2, max=60), reraise=True)
     async def generate(
         self,
         prompt: str,
@@ -109,7 +110,9 @@ class GeminiVLM(VLMProvider):
                 thinking_budget=thinking_budget,
                 max_output_tokens=config.max_output_tokens,
             )
-        response = client.models.generate_content(
+        # Sync SDK call moved off the event loop so concurrent pipelines overlap
+        response = await asyncio.to_thread(
+            client.models.generate_content,
             model=self._model,
             contents=contents,
             config=config,
