@@ -1338,9 +1338,24 @@ def slide_batch(
                 return False
 
         async def _limited(idx: int, pf: Path) -> tuple[Path, bool]:
+            # Stagger start-up: near-simultaneous bursts to the image API
+            # fail or hang server-side (observed 2026-08-03) long before
+            # per-minute quotas are near. Slides call the image API almost
+            # immediately, so the stagger must exceed request-setup jitter.
+            await asyncio.sleep((idx - 1) * 5)
             async with sem:
                 console.print(f"[bold][{idx}/{len(prompt_files)}] {pf.name}[/bold]")
-                return pf, await _generate_one(pf)
+                ok = await _generate_one(pf)
+            if not ok:
+                # In-batch delayed retry: transient 503/overload windows tend
+                # to clear within tens of seconds. Sleeping OUTSIDE the slot
+                # and re-acquiring overlaps recovery with other slides instead
+                # of extending the batch tail.
+                await asyncio.sleep(25)
+                async with sem:
+                    console.print(f"[yellow]In-batch retry:[/yellow] {pf.name}")
+                    ok = await _generate_one(pf)
+            return pf, ok
 
         results = await asyncio.gather(
             *(_limited(i, pf) for i, pf in enumerate(prompt_files, 1))
