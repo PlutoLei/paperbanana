@@ -1255,6 +1255,10 @@ def slide_batch(
     resolution: str = typer.Option(
         "4k", "--resolution", "-r", help="Output resolution: 1k, 2k, 4k"
     ),
+    concurrent: Optional[int] = typer.Option(
+        None, "--concurrent", "-c",
+        help="Max slides generated concurrently (default: settings.batch_concurrent)",
+    ),
 ):
     """Batch generate all slides from a prompts directory."""
     style_prompt = ""
@@ -1309,9 +1313,10 @@ def slide_batch(
     import shutil
 
     async def _run():
-        success = failed = 0
-        for i, pf in enumerate(prompt_files, 1):
-            console.print(f"\n[bold][{i}/{len(prompt_files)}] {pf.name}[/bold]")
+        limit = concurrent or settings.batch_concurrent
+        sem = asyncio.Semaphore(limit)
+
+        async def _generate_one(pf: Path) -> bool:
             source_context = pf.read_text(encoding="utf-8")
             if style_prompt:
                 source_context = style_prompt + "\n\n---\n\n" + source_context
@@ -1321,17 +1326,44 @@ def slide_batch(
                 diagram_type=DiagramType.SLIDE,
             )
             try:
+                # One fresh pipeline per slide: isolated run_id / run dir / agents
                 pipeline = PaperBananaPipeline(settings=settings)
                 result = await pipeline.generate(gen_input)
                 out_file = out_path / f"{pf.stem}.png"
                 shutil.copy2(result.image_path, str(out_file))
-                console.print(f"  [green]Saved:[/green] {out_file.name} ({len(result.iterations)} iterations)")
-                success += 1
+                console.print(f"[green]Saved:[/green] {out_file.name} ({len(result.iterations)} iterations)")
+                return True
             except Exception as e:
-                console.print(f"  [red]Failed:[/red] {e}")
-                failed += 1
+                console.print(f"[red]Failed:[/red] {pf.name}: {e}")
+                return False
 
-        console.print(f"\n[bold]Batch complete![/bold] {success} succeeded, {failed} failed.")
+        async def _limited(idx: int, pf: Path) -> tuple[Path, bool]:
+            async with sem:
+                console.print(f"[bold][{idx}/{len(prompt_files)}] {pf.name}[/bold]")
+                return pf, await _generate_one(pf)
+
+        results = await asyncio.gather(
+            *(_limited(i, pf) for i, pf in enumerate(prompt_files, 1))
+        )
+        failures = [pf for pf, ok in results if not ok]
+        success = len(prompt_files) - len(failures)
+
+        # End-of-batch serial retry: rate-limit bursts that killed a slide
+        # mid-batch usually clear once the concurrent load is gone.
+        if failures:
+            console.print(f"\n[yellow]Retrying {len(failures)} failed slide(s) serially...[/yellow]")
+            still_failed = []
+            for pf in failures:
+                if await _generate_one(pf):
+                    success += 1
+                else:
+                    still_failed.append(pf)
+            failures = still_failed
+
+        console.print(
+            f"\n[bold]Batch complete![/bold] {success} succeeded, {len(failures)} failed."
+            f" (concurrency={limit})"
+        )
 
     asyncio.run(_run())
 
