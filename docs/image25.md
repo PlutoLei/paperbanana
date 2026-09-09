@@ -86,6 +86,14 @@ synthetic SDK responses, including a real SDK with an HTTP mock transport. They 
 serialization, validation and recovery behavior, not provider access, real latency, cost or image
 quality. The new default route/profile is not selected by synthetic test scores.
 
+The subsequent [live smoke test](image25-live-smoke.md) verified generation, masked editing,
+multiple references, transparent output, native Codex calls and the existing Gemini/Vertex route.
+It also found recoverable visual/text errors. For edits, state which background/font/content to
+preserve and assign each reference an explicit role. Include exact critical strings and their
+language/script; inspect the result and use OCR where useful. A mask does not guarantee that all
+outside pixels remain identical. Evaluate transparency using alpha-aware composition, rather
+than RGB values alone. Model-list absence alone did not establish lack of access in this run.
+
 Sources checked 2026-09-09: [Sunburst](https://developers.openai.com/api/docs/models/gpt-image-2.5-sunburst),
 [Flare](https://developers.openai.com/api/docs/models/gpt-image-2.5-flare),
 [Image API](https://developers.openai.com/api/docs/guides/image-generation),

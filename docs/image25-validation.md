@@ -1,7 +1,9 @@
 # Offline validation — 2026-09-09
 
-This change is an engineering integration, with no real native image calls or paid provider
-calls. The 24-case model evaluation remains planned; no quality, latency or cost is claimed.
+This initial engineering check used no real native image calls or paid provider calls.
+The subsequent [live smoke test](image25-live-smoke.md) records real calls separately.
+The 24-case model evaluation remains planned; no quality, latency or cost is claimed by the
+offline checks below.
 
 Targeted regression command:
 
