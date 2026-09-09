@@ -1,0 +1,10 @@
+# Opt-in Image API profile; does not change the project default.
+# Requires the OpenAI optional dependency and separately authorized provider access.
+image:
+  provider: openai_imagen
+  model: gpt-image-2.5-flare
+  quality: high
+  size: 1536x864
+  background: opaque
+output:
+  format: png

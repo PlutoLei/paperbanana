@@ -2,6 +2,11 @@
 
 > **Fork Notice:** This is a downstream fork of [llmsresearch/paperbanana](https://github.com/llmsresearch/paperbanana). Local additions on top of upstream: an extended `exp_mode` pipeline (vanilla / planner / planner_stylist / fast / full), native **slide generation**, and performance options (e.g. `skip_stylist`, `critic_score_threshold`).
 
+**Opt-in Image 2.5 integration:** [API controls, editing and recovery](docs/image25.md), plus a
+[24-case evaluation protocol](evaluations/image25/README.md). The OpenAI provider supports
+Sunburst/Flare without changing the project's Gemini defaults or existing Gemini routes.
+For Codex native image generation and editable PPTX building, this Python core is optional.
+
 <table align="center" width="100%" style="border: none; border-collapse: collapse;">
   <tr>
     <td width="220" align="left" valign="middle" style="border: none;">

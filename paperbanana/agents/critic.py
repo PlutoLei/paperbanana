@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from typing import Optional
 
@@ -24,9 +25,11 @@ class CriticAgent(BaseAgent):
     """
 
     def __init__(
-        self, vlm_provider: VLMProvider, prompt_dir: str = "prompts", prompt_recorder=None
+        self, vlm_provider: VLMProvider, prompt_dir: str = "prompts", prompt_recorder=None,
+        strict_response: bool = False,
     ):
         super().__init__(vlm_provider, prompt_dir, prompt_recorder=prompt_recorder)
+        self.strict_response = strict_response
 
     @property
     def agent_name(self) -> str:
@@ -117,6 +120,16 @@ class CriticAgent(BaseAgent):
         """Parse the VLM response into a CritiqueResult."""
         try:
             data = json.loads(response)
+            if self.strict_response:
+                if (not isinstance(data, dict) or not isinstance(data.get("critic_suggestions"), list)
+                        or any(not isinstance(item, str) for item in data["critic_suggestions"])
+                        or (data.get("revised_description") is not None
+                            and not isinstance(data["revised_description"], str))):
+                    raise ValueError("Invalid Critic response; output remains UNREVIEWED")
+                score_value = data.get("score")
+                if score_value is not None and (type(score_value) not in (int, float)
+                        or not math.isfinite(score_value) or not 0 <= score_value <= 10):
+                    raise ValueError("Invalid Critic score; output remains UNREVIEWED")
             raw_score = data.get("score")
             score = None
             if raw_score is not None:
@@ -130,6 +143,8 @@ class CriticAgent(BaseAgent):
                 score=score,
             )
         except (json.JSONDecodeError, KeyError) as e:
+            if self.strict_response:
+                raise ValueError("Invalid Critic response; output remains UNREVIEWED") from None
             logger.warning("Failed to parse critic response", error=str(e))
             # Conservative fallback: empty suggestions means no revision needed
             return CritiqueResult(

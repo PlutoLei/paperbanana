@@ -1255,6 +1255,7 @@ def slide_batch(
     resolution: str = typer.Option(
         "4k", "--resolution", "-r", help="Output resolution: 1k, 2k, 4k"
     ),
+    retry_unknown: bool = typer.Option(False, "--retry-unknown", help="Explicitly retry ambiguous attempts; may repeat a billed request"),
     concurrent: Optional[int] = typer.Option(
         None, "--concurrent", "-c",
         help="Max slides generated concurrently (default: settings.batch_concurrent)",
@@ -1293,7 +1294,6 @@ def slide_batch(
     }
     if image_model:
         overrides["image_model"] = image_model
-        overrides["openai_image_model"] = image_model
     if image_provider:
         overrides["image_provider"] = image_provider
     settings = Settings(**overrides)
@@ -1313,7 +1313,12 @@ def slide_batch(
     import shutil
 
     async def _run():
-        limit = concurrent or settings.batch_concurrent
+        from paperbanana.core.image_batch import ImageBatch, fingerprint
+        from paperbanana.providers.image_gen.openai_imagen import ImageGenerationError
+        journal = ImageBatch(out_path) if settings.image_provider == "openai_imagen" else None
+        limit = concurrent if concurrent is not None else settings.batch_concurrent
+        if limit < 1:
+            raise ValueError("concurrent must be positive")
         sem = asyncio.Semaphore(limit)
 
         async def _generate_one(pf: Path) -> bool:
@@ -1325,15 +1330,45 @@ def slide_batch(
                 communicative_intent=f"Generate slide: {pf.stem}",
                 diagram_type=DiagramType.SLIDE,
             )
+            out_file = out_path / f"{pf.stem}.png"
+            request_hash = fingerprint({
+                "prompt": source_context, "model": settings.effective_image_model,
+                "provider": settings.image_provider, "quality": settings.image_quality,
+                "size": settings.image_size, "background": settings.image_background,
+                "format": settings.output_format, "resolution": resolution,
+                "critic_rounds": iterations, "vlm": settings.effective_vlm_model,
+                "vlm_provider": settings.vlm_provider,
+                "seed": settings.seed, "critic_score_threshold": settings.critic_score_threshold,
+                "skip_stylist": settings.skip_stylist, "prompt_dir": settings.prompt_dir,
+                "reference_set": settings.reference_set_path, "guidelines": settings.guidelines_path,
+                "retrieval_examples": settings.num_retrieval_examples,
+                "endpoint": settings.openai_base_url,
+            })
+            decision = journal.decision(pf.name, request_hash, out_file, retry_unknown) if journal else "run"
+            if decision == "reuse":
+                console.print(f"[green]Reused verified output:[/green] {out_file.name}")
+                return True
+            if decision == "result_unknown":
+                console.print(f"[yellow]Result unknown:[/yellow] {pf.name}; inspect before --retry-unknown")
+                return False
+            if journal:
+                journal.record(pf.name, request_hash, "running")
             try:
                 # One fresh pipeline per slide: isolated run_id / run dir / agents
                 pipeline = PaperBananaPipeline(settings=settings)
                 result = await pipeline.generate(gen_input)
-                out_file = out_path / f"{pf.stem}.png"
                 shutil.copy2(result.image_path, str(out_file))
+                if journal:
+                    journal.record(pf.name, request_hash, "complete", out_file)
                 console.print(f"[green]Saved:[/green] {out_file.name} ({len(result.iterations)} iterations)")
                 return True
             except Exception as e:
+                # A whole-pipeline retry can repeat an image that already succeeded.
+                status = "failed" if isinstance(e, (ImageGenerationError, ValueError)) else "result_unknown"
+                if isinstance(e, ImageGenerationError) and e.code == "result_unknown":
+                    status = "result_unknown"
+                if journal:
+                    journal.record(pf.name, request_hash, status)
                 console.print(f"[red]Failed:[/red] {pf.name}: {e}")
                 return False
 
@@ -1346,11 +1381,8 @@ def slide_batch(
             async with sem:
                 console.print(f"[bold][{idx}/{len(prompt_files)}] {pf.name}[/bold]")
                 ok = await _generate_one(pf)
-            if not ok:
-                # In-batch delayed retry: transient 503/overload windows tend
-                # to clear within tens of seconds. Sleeping OUTSIDE the slot
-                # and re-acquiring overlaps recovery with other slides instead
-                # of extending the batch tail.
+            if not ok and journal is None:
+                # Keep the established non-OpenAI retry path unchanged.
                 await asyncio.sleep(25)
                 async with sem:
                     console.print(f"[yellow]In-batch retry:[/yellow] {pf.name}")
@@ -1362,10 +1394,7 @@ def slide_batch(
         )
         failures = [pf for pf, ok in results if not ok]
         success = len(prompt_files) - len(failures)
-
-        # End-of-batch serial retry: rate-limit bursts that killed a slide
-        # mid-batch usually clear once the concurrent load is gone.
-        if failures:
+        if failures and journal is None:
             console.print(f"\n[yellow]Retrying {len(failures)} failed slide(s) serially...[/yellow]")
             still_failed = []
             for pf in failures:
@@ -1379,8 +1408,10 @@ def slide_batch(
             f"\n[bold]Batch complete![/bold] {success} succeeded, {len(failures)} failed."
             f" (concurrency={limit})"
         )
+        return len(failures) if journal else 0
 
-    asyncio.run(_run())
+    if asyncio.run(_run()):
+        raise typer.Exit(1)
 
 
 @app.command()
@@ -1394,6 +1425,10 @@ def doctor(
 
     raise typer.Exit(run_doctor(output_json=json_output))
 
+
+from paperbanana.image_cli import image_command
+
+app.command(name="image")(image_command)
 
 if __name__ == "__main__":
     app()

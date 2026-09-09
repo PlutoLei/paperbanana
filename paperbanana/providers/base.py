@@ -77,6 +77,16 @@ class ImageGenProvider(ABC):
         ...
 
     @property
+    def supports_edit(self) -> bool:
+        """Whether edits preserve a supplied image through an actual edit endpoint."""
+        return False
+
+    async def edit(self, prompt: str, images: list[Image.Image],
+                   mask: Optional[Image.Image] = None, **kwargs) -> Image.Image:
+        """Edit reference images; never silently substitute text-only generation."""
+        raise NotImplementedError(f"{self.name} does not support image editing")
+
+    @property
     def supported_ratios(self) -> list[str]:
         """Aspect ratios this provider supports. Override in subclasses."""
         return ["1:1", "16:9"]  # conservative default

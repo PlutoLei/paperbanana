@@ -798,7 +798,7 @@ def test_openai_imagen_size_mapping():
     """OpenAIImageGen maps pixel dimensions to the correct OpenAI size strings."""
     from paperbanana.providers.image_gen.openai_imagen import OpenAIImageGen
 
-    gen = OpenAIImageGen(api_key="test-key")
+    gen = OpenAIImageGen(api_key="test-key", model="gpt-image-1.5")
 
     # Landscape
     assert gen._size_string(1792, 1024) == "1536x1024"
@@ -830,7 +830,7 @@ async def test_openai_imagen_appends_negative_prompt():
     mock_client = AsyncMock()
     mock_client.images.generate = AsyncMock(return_value=mock_result)
 
-    gen = OpenAIImageGen(api_key="test-key")
+    gen = OpenAIImageGen(api_key="test-key", model="gpt-image-1.5")
     gen._client = mock_client
 
     await gen.generate(

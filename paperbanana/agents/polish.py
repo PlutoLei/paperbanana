@@ -203,12 +203,17 @@ class PolishAgent(BaseAgent):
             f"Polished Image:"
         )
 
-        # Use image generation provider to create polished version
-        polished_image = await self.image_gen.generate(
-            prompt=prompt,
-            width=getattr(self, '_width', 1792),
-            height=getattr(self, '_height', 1024),
-        )
+        if self.image_gen.supports_edit:
+            polished_image = await self.image_gen.edit(
+                prompt=prompt, images=[original_image],
+                width=getattr(self, '_width', 1792), height=getattr(self, '_height', 1024),
+            )
+        else:
+            # Preserve existing Gemini/other-provider polish behavior (text regeneration).
+            polished_image = await self.image_gen.generate(
+                prompt=prompt,
+                width=getattr(self, '_width', 1792), height=getattr(self, '_height', 1024),
+            )
 
         if output_path is None:
             output_path = str(self.output_dir / "polished.png")

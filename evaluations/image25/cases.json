@@ -1,0 +1,308 @@
+{
+  "schema_version": 1,
+  "status": "PLANNED_NOT_RUN",
+  "candidates": [
+    {
+      "id": "sunburst-high",
+      "model": "gpt-image-2.5-sunburst-2026-09-08",
+      "quality": "high"
+    },
+    {
+      "id": "sunburst-xhigh",
+      "model": "gpt-image-2.5-sunburst-2026-09-08",
+      "quality": "xhigh"
+    },
+    {
+      "id": "flare-high",
+      "model": "gpt-image-2.5-flare-2026-09-08",
+      "quality": "high"
+    },
+    {
+      "id": "flare-xhigh",
+      "model": "gpt-image-2.5-flare-2026-09-08",
+      "quality": "xhigh"
+    }
+  ],
+  "cases": [
+    {
+      "id": "bilingual_text-01",
+      "category": "bilingual_text",
+      "split": "tuning",
+      "operation": "generate",
+      "prompt": "A white academic slide titled \"检索增强生成 / Retrieval-Augmented Generation\". Three boxes: 检索 Retrieval, 融合 Fusion, 生成 Generation. Two arrows left to right. No extra labels.",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png"
+    },
+    {
+      "id": "bilingual_text-02",
+      "category": "bilingual_text",
+      "split": "tuning",
+      "operation": "generate",
+      "prompt": "A two-column comparison card. Left: 灵敏度 Sensitivity 0.91. Right: 特异度 Specificity 0.87. Footer: Illustrative values. Keep all numbers exact.",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png"
+    },
+    {
+      "id": "bilingual_text-03",
+      "category": "bilingual_text",
+      "split": "holdout",
+      "operation": "generate",
+      "prompt": "A white slide titled \"多模态评估 / Multimodal Evaluation\". Exactly four labeled circles: 文本 Text, 图像 Image, 指标 Metrics, 审核 Review. No duplicate characters.",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png"
+    },
+    {
+      "id": "bilingual_text-04",
+      "category": "bilingual_text",
+      "split": "holdout",
+      "operation": "generate",
+      "prompt": "A clear captioned workflow with labels 输入 Input, 编码 Encode, 解码 Decode, 输出 Output. Arrows in that order; no added stages.",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png"
+    },
+    {
+      "id": "structure-01",
+      "category": "structure",
+      "split": "tuning",
+      "operation": "generate",
+      "prompt": "Draw Input -> Encoder -> Bottleneck -> Decoder -> Output with one dashed skip connection Encoder -> Decoder. Preserve direction and exact node count.",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png"
+    },
+    {
+      "id": "structure-02",
+      "category": "structure",
+      "split": "tuning",
+      "operation": "generate",
+      "prompt": "Draw a two-branch model: one image branch and one text branch join at Fusion, followed by Classifier. No links between input branches.",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png"
+    },
+    {
+      "id": "structure-03",
+      "category": "structure",
+      "split": "holdout",
+      "operation": "generate",
+      "prompt": "Draw Source -> Split -> Train and Test. Train -> Model -> Evaluate; Test -> Evaluate. No arrow from Test to Train or Model.",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png"
+    },
+    {
+      "id": "structure-04",
+      "category": "structure",
+      "split": "holdout",
+      "operation": "generate",
+      "prompt": "Draw three horizontal modules named A, B, C; A sends data to both B and C; C sends feedback to A using a dashed arrow. B has no outgoing arrow.",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png"
+    },
+    {
+      "id": "data_fidelity-01",
+      "category": "data_fidelity",
+      "split": "tuning",
+      "operation": "generate",
+      "prompt": "Make a simple bar chart for illustrative data A=12, B=18, C=9. Start y-axis at zero and label every bar with the exact value. No inferred confidence intervals.",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png"
+    },
+    {
+      "id": "data_fidelity-02",
+      "category": "data_fidelity",
+      "split": "tuning",
+      "operation": "generate",
+      "prompt": "Make a table: Model A accuracy 82.1%, Model B 85.6%, Model C 84.3%. Add \"Illustrative data\". Do not add significance claims or rankings.",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png"
+    },
+    {
+      "id": "data_fidelity-03",
+      "category": "data_fidelity",
+      "split": "holdout",
+      "operation": "generate",
+      "prompt": "Show a flow diagram of sample counts: 100 total -> 80 train and 20 test. The counts must sum to 100. Label as synthetic example.",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png"
+    },
+    {
+      "id": "data_fidelity-04",
+      "category": "data_fidelity",
+      "split": "holdout",
+      "operation": "generate",
+      "prompt": "Make two metric cards: F1 0.73 and AUROC 0.81. Preserve decimal places; footer \"Synthetic example, no clinical claim\".",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png"
+    },
+    {
+      "id": "masked_edit-01",
+      "category": "masked_edit",
+      "split": "tuning",
+      "operation": "edit",
+      "prompt": "Within the transparent mask only, replace the title with \"Validation\". Preserve the layout, labels, colors and all content outside the mask.",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png",
+      "reference_requirements": {
+        "count": 1,
+        "frozen_sha256_required": true,
+        "mask_required": true
+      }
+    },
+    {
+      "id": "masked_edit-02",
+      "category": "masked_edit",
+      "split": "tuning",
+      "operation": "edit",
+      "prompt": "Within the transparent mask only, change the blue circle to orange. Preserve its shape and everything outside the mask.",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png",
+      "reference_requirements": {
+        "count": 1,
+        "frozen_sha256_required": true,
+        "mask_required": true
+      }
+    },
+    {
+      "id": "masked_edit-03",
+      "category": "masked_edit",
+      "split": "holdout",
+      "operation": "edit",
+      "prompt": "Within the transparent mask only, replace the number 12 with 15. Preserve typography and surrounding table cells.",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png",
+      "reference_requirements": {
+        "count": 1,
+        "frozen_sha256_required": true,
+        "mask_required": true
+      }
+    },
+    {
+      "id": "masked_edit-04",
+      "category": "masked_edit",
+      "split": "holdout",
+      "operation": "edit",
+      "prompt": "Within the transparent mask only, remove the small red annotation. Preserve the underlying white background and all other diagram elements.",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png",
+      "reference_requirements": {
+        "count": 1,
+        "frozen_sha256_required": true,
+        "mask_required": true
+      }
+    },
+    {
+      "id": "multi_reference-01",
+      "category": "multi_reference",
+      "split": "tuning",
+      "operation": "edit",
+      "prompt": "Combine the layout of reference 1 with the colors of reference 2. Keep exactly the labels from reference 1. Add no label from reference 2.",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png",
+      "reference_requirements": {
+        "count": 2,
+        "frozen_sha256_required": true,
+        "mask_required": false
+      }
+    },
+    {
+      "id": "multi_reference-02",
+      "category": "multi_reference",
+      "split": "tuning",
+      "operation": "edit",
+      "prompt": "Place the two supplied icons side by side on white; preserve each identity and relative proportions. Add no text.",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png",
+      "reference_requirements": {
+        "count": 2,
+        "frozen_sha256_required": true,
+        "mask_required": false
+      }
+    },
+    {
+      "id": "multi_reference-03",
+      "category": "multi_reference",
+      "split": "holdout",
+      "operation": "edit",
+      "prompt": "Keep the structure of reference 1, replace only its central icon with the icon in reference 2. Preserve all arrows and labels.",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png",
+      "reference_requirements": {
+        "count": 2,
+        "frozen_sha256_required": true,
+        "mask_required": false
+      }
+    },
+    {
+      "id": "multi_reference-04",
+      "category": "multi_reference",
+      "split": "holdout",
+      "operation": "edit",
+      "prompt": "Create a comparison panel from reference 1 and reference 2, preserving the visible objects in each and adding only the headings Before and After.",
+      "size": "1536x864",
+      "background": "opaque",
+      "output_format": "png",
+      "reference_requirements": {
+        "count": 2,
+        "frozen_sha256_required": true,
+        "mask_required": false
+      }
+    },
+    {
+      "id": "transparent_asset-01",
+      "category": "transparent_asset",
+      "split": "tuning",
+      "operation": "generate",
+      "prompt": "A text-free microscope illustration, isolated, transparent background, flat scientific style, no shadow.",
+      "size": "1536x864",
+      "background": "transparent",
+      "output_format": "png"
+    },
+    {
+      "id": "transparent_asset-02",
+      "category": "transparent_asset",
+      "split": "tuning",
+      "operation": "generate",
+      "prompt": "A text-free blue encoder block with three ports, transparent background, crisp edges, no border.",
+      "size": "1536x864",
+      "background": "transparent",
+      "output_format": "png"
+    },
+    {
+      "id": "transparent_asset-03",
+      "category": "transparent_asset",
+      "split": "holdout",
+      "operation": "generate",
+      "prompt": "A text-free illustration of a database cylinder, transparent background, simple teal geometry, no shadow.",
+      "size": "1536x864",
+      "background": "transparent",
+      "output_format": "png"
+    },
+    {
+      "id": "transparent_asset-04",
+      "category": "transparent_asset",
+      "split": "holdout",
+      "operation": "generate",
+      "prompt": "A text-free orange network node with four connectors, transparent background, flat vector-like style.",
+      "size": "1536x864",
+      "background": "transparent",
+      "output_format": "png"
+    }
+  ]
+}

@@ -54,6 +54,8 @@ class VisualizerAgent(BaseAgent):
         aspect_ratio: Optional[str] = None,
         width: int = 1792,
         height: int = 1024,
+        reference_images: Optional[list[Image.Image]] = None,
+        mask: Optional[Image.Image] = None,
     ) -> str:
         """Generate an image from a description.
 
@@ -71,6 +73,17 @@ class VisualizerAgent(BaseAgent):
         Returns:
             Path to the generated image.
         """
+        if reference_images is not None or mask is not None:
+            if not reference_images:
+                raise ValueError("Editing requires reference images")
+            if not self.image_gen.supports_edit:
+                raise NotImplementedError(f"{self.image_gen.name} does not support editing")
+            image = await self.image_gen.edit(
+                prompt=description, images=reference_images, mask=mask, width=width, height=height
+            )
+            output_path = output_path or str(self.output_dir / f"edit_iter_{iteration}.png")
+            save_image(image, output_path)
+            return output_path
         if diagram_type == DiagramType.STATISTICAL_PLOT:
             return await self._generate_plot(
                 description, raw_data, output_path, iteration, aspect_ratio

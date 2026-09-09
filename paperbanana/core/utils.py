@@ -87,6 +87,7 @@ def save_image(
     byte stream whose format differs from the extension.
     """
     image = _ensure_pil_image(image)
+    generation_metadata = image.info.get("paperbanana_generation")
     path = Path(path)
     ensure_dir(path.parent)
 
@@ -112,6 +113,10 @@ def save_image(
         image.save(path, format=fmt)
     else:
         image.save(path)
+    if isinstance(generation_metadata, dict):
+        path.with_suffix(".image.json").write_text(
+            json.dumps(generation_metadata, indent=2) + "\n", encoding="utf-8"
+        )
     return path
 
 

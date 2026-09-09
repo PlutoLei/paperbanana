@@ -1,0 +1,21 @@
+name: Image adapter offline contracts
+on:
+  push:
+    branches: [main, codex/image25-adapter]
+  pull_request:
+    branches: [main]
+jobs:
+  contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - run: python -m pip install -e '.[dev,openai,google]'
+      - run: >-
+          python -m pytest -q tests/test_image25 tests/test_config.py
+          tests/test_providers/test_registry.py tests/test_features.py
+          tests/test_agents/test_visualizer.py tests/test_utils.py tests/test_cli.py
+          tests/test_final_selection.py tests/test_pipeline/test_output_format.py
+          tests/test_pipeline/test_metadata_contract.py

@@ -10,7 +10,7 @@ from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings
 
 OutputFormat = Literal["png", "jpeg", "webp"]
-ImageQuality = Literal["low", "medium", "high", "auto"]
+ImageQuality = Literal["low", "medium", "high", "xhigh", "max", "auto"]
 ExemplarRetrievalMode = Literal["external_only", "external_then_rerank"]
 Venue = Literal["neurips", "icml", "acl", "ieee", "custom"]
 VectorExportMode = Literal["none", "svg", "pdf", "both"]
@@ -88,6 +88,10 @@ class Settings(BaseSettings):
     batch_concurrent: int = 2
     output_resolution: str = Field(default="2k", alias="OUTPUT_RESOLUTION")
     image_quality: ImageQuality = Field(default="auto", alias="IMAGE_QUALITY")
+    image_size: Optional[str] = Field(default=None, alias="IMAGE_SIZE")
+    image_background: Literal["auto", "opaque", "transparent"] = Field(
+        default="auto", alias="IMAGE_BACKGROUND"
+    )
     seed: Optional[int] = None
     exemplar_retrieval_enabled: bool = False
     exemplar_retrieval_endpoint: Optional[str] = None
@@ -158,6 +162,14 @@ class Settings(BaseSettings):
     bedrock_vlm_model: Optional[str] = Field(default=None, alias="BEDROCK_VLM_MODEL")
     bedrock_image_model: Optional[str] = Field(default=None, alias="BEDROCK_IMAGE_MODEL")
 
+    def __init__(self, **values: Any):
+        super().__init__(**values)
+        # Scope the new precedence rule to OpenAI; preserve Gemini/Bedrock routing.
+        explicit_model = values.get("image_model", values.get("IMAGE_MODEL"))
+        if (self.image_provider == "openai_imagen" and explicit_model
+                and "openai_image_model" not in values and "OPENAI_IMAGE_MODEL" not in values):
+            self.openai_image_model = self.image_model
+
     @property
     def effective_vlm_model(self) -> str:
         """Return the VLM model for the active provider."""
@@ -220,12 +232,12 @@ class Settings(BaseSettings):
     @field_validator("image_quality", mode="before")
     @classmethod
     def validate_image_quality(cls, v: Any) -> str:
-        """Validate image_quality is low, medium, high, or auto."""
+        """Validate syntax; the selected provider validates model capabilities."""
         if v is None:
             return "auto"
         v = str(v).lower()
-        if v not in ("low", "medium", "high", "auto"):
-            raise ValueError(f"image_quality must be low, medium, high, or auto. Got: {v}")
+        if v not in ("low", "medium", "high", "xhigh", "max", "auto"):
+            raise ValueError(f"image_quality must be low, medium, high, xhigh, max, or auto. Got: {v}")
         return v
 
     @field_validator("exemplar_retrieval_top_k")
@@ -305,6 +317,8 @@ def _flatten_yaml(config: dict, prefix: str = "") -> dict:
         "image.provider": "image_provider",
         "image.model": "image_model",
         "image.quality": "image_quality",
+        "image.size": "image_size",
+        "image.background": "image_background",
         "pipeline.num_retrieval_examples": "num_retrieval_examples",
         "pipeline.refinement_iterations": "refinement_iterations",
         "pipeline.auto_refine": "auto_refine",

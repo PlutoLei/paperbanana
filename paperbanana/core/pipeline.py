@@ -196,7 +196,8 @@ class PaperBananaPipeline:
             prompt_recorder=self._prompt_recorder,
         )
         self.critic = CriticAgent(
-            self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder
+            self._vlm, prompt_dir=prompt_dir, prompt_recorder=self._prompt_recorder,
+            strict_response=self.settings.image_provider == "openai_imagen",
         )
 
         logger.info(
@@ -916,6 +917,10 @@ class PaperBananaPipeline:
                 )
             except Exception as e:
                 logger.error("Visualizer failed", iteration=i + 1, error=str(e))
+                from paperbanana.providers.image_gen.openai_imagen import ImageGenerationError
+                if isinstance(e, ImageGenerationError):
+                    # Preserve candidates without hiding a failed/ambiguous API attempt.
+                    raise
                 if iterations:
                     logger.warning("Rolling back to previous best image")
                     break

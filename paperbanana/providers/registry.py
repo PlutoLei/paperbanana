@@ -216,6 +216,10 @@ class ProviderRegistry:
                 api_key=settings.openai_api_key,
                 model=settings.openai_image_model or settings.image_model,
                 base_url=settings.openai_base_url,
+                quality=settings.image_quality,
+                size=settings.image_size,
+                background=settings.image_background,
+                output_format=settings.output_format,
             )
         elif provider == "bedrock_imagen":
             _validate_bedrock_auth(settings.aws_region, settings.aws_profile)
